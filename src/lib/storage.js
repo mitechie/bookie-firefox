@@ -14,7 +14,7 @@ var Storage = function() {
         console.log('did we find it?');
         console.log(extStorage[key]);
         console.log(extStorage[key]);
-
+        
         return extStorage[key];
     };
 
