@@ -99,6 +99,38 @@ exports.BookieApi = function (config) {
         sync: function (callbacks, bind_scope) {
             var api_url_append = "/extension/sync";
             _api.get(api_url_append, {}, callbacks, bind_scope);
+        },
+
+        /**
+         * Helper for updating the bmark hash list periodically.
+         * Based on the params below it syncs the bmark list in localStorage
+         * 
+         * @method checkNew
+         * @param {Integer} lastSync Last Synced timestamp
+         * @param {Boolean} savedPrefs Do we have valid preferences on file?
+         * @param {Integer} Time period to check if it has elapsed
+         * @param {Object} bind_scope A scope containing the storage object
+         * 
+         */
+        checkNew: function(lastSync, savedPrefs, interval, bind_scope) {
+            if (lastSync && ((new Date()).getTime() - lastSync > interval) ||
+                (!lastSync && savedPrefs)) {
+                
+                this.sync({
+                    success: function(resp) {
+                        resp.json.hash_list.forEach(function(key) {
+                            bind_scope.storage.save(key, true);
+                        });
+
+                        // Update the last sync flag here.
+                        bind_scope.storage.save('lastSync', (new Date()).getTime());
+                    },
+                    failure: function(resp) {
+                        console.log('sync fail');
+                        console.log(resp.json);
+                    }
+                }, bind_scope);
+            }
         }
     };
 

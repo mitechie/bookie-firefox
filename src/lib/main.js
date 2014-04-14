@@ -3,6 +3,7 @@ var data = require("sdk/self").data,
     tabs = require("sdk/tabs"),
     widgets = require("sdk/widget"),
     BookieApi = require('./api').BookieApi,
+    timer = require('sdk/timers'),
     api = BookieApi(prefs.prefs),
    { Hotkey } = require("sdk/hotkeys");
 
@@ -74,8 +75,31 @@ var showBmarkPanel = Hotkey({
     }
 });
 
-
 exports.main = function(options, callbacks) {
+
+    // Allow up to a minute for the extension to download the hashes and 
+    // update them in the local storage. Otherwise, the intervals after
+    // which the hashes are updated is nearly doubled.
+    var minute = 60 * 1000,
+        interval = (86400 * 1000) + minute,
+        api = BookieApi(prefs.prefs),
+        that = {
+            storage: storage
+        };
+
+    api.checkNew(storage.get('lastSync'), storage.get('savedPrefs'),
+        interval - minute, that);
+
+    // The reason why preferences, lastSync, savedPrefs 
+    // are not cached is that they can change over a period of time.
+    // In the worst case, the hash list will remain out of sync for 
+    // a period of 47 hours. 
+    var handle = timer.setInterval(function() {
+        var api = BookieApi(prefs.prefs);
+        api.checkNew(storage.get('lastSync'), storage.get('savedPrefs'),
+            interval - minute, that);
+    }, interval);
+
     // When the extension is first installed, take the user to the options
     // page like in the chrome extensions and have him fill the settings.
     // Check for the savedPrefs flag every single time the extensions starts
@@ -103,10 +127,17 @@ exports.main = function(options, callbacks) {
 
             worker.port.on("savePreferences", function(prefData) {
 
-                var api = BookieApi(prefData);
+                var api = BookieApi(prefData),
+                    that = {
+                        storage: storage
+                    };
+
                 api.ping({
                     success: function(response) {
                         if (response.json.success) {
+                            var that = {
+                                storage: storage
+                            };
 
                             // Update the preferences using the preference service.
                             var newPrefs = prefs.prefs;
@@ -119,6 +150,8 @@ exports.main = function(options, callbacks) {
                             prefs.prefs = newPrefs;
                             storage.save("savedPrefs", true);
 
+                            // Force update.
+                            api.checkNew(0, true, 0, that);
                             worker.port.emit("pingSucceeded");
                         }
                     },
@@ -139,6 +172,9 @@ exports.main = function(options, callbacks) {
                             storage.save(key, true);
                             worker.port.emit("syncSuccess");
                         });
+
+                        // Update the last sync flag here.
+                        storage.save('lastSync',(new Date()).getTime());
                     },
                     failure: function(resp) {
                         console.log('sync fail');
@@ -160,3 +196,4 @@ exports.main = function(options, callbacks) {
         storage.save("savedPrefs", false);
     }
 };
+    
